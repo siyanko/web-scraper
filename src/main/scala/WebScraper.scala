@@ -1,4 +1,6 @@
 import cats.effect._
+import io.circe.generic.auto._
+import io.circe.syntax._
 import org.http4s.client.blaze._
 import org.http4s.dsl.io._
 import org.jsoup.Jsoup
@@ -12,18 +14,19 @@ object WebScraper {
   type ParameterKey = String
   type ParameterValue = String
 
+  final case class InverterRawParameter(key: String, value: String)
 
   //unsafe
-  def  parseTable(table: Element): List[(ParameterKey, ParameterValue)] = {
+  def  parseTable(table: Element): List[InverterRawParameter] = {
     table.select("tr").asScala.toList
       .flatMap(tr => tr.children().asScala.toList.map(_.text()).sliding(2).map{
-        case List(a, b) => (a, b)
+        case List(a, b) => InverterRawParameter(a, b)
       }.toList)
   }
 
 
   //unsafe
-  def productBlock(p: Page): List[(ParameterKey, ParameterValue)]= {
+  def productBlock(p: Page): List[InverterRawParameter]= {
     val doc = Jsoup.parse(p)
     val body = doc.body()
 //    body.getElementById("bacc_45e3b058-7e9d-4f21-a042-edb11b9efdd0_372160b4-7b89-436b-80c5-d56ae52046d5_") // fronius galvo 1.5-1
@@ -57,7 +60,7 @@ object WebScraper {
     page <- httpClient.expect[String]("http://www.fronius.com/en/photovoltaics/products/all-products/inverters/fronius-galvo/fronius-galvo-2-0-1")
     _ <- println("GOT Fronius Galvo 2.0-1 page")
     bodyElements <- IO(productBlock(page))
-    _ <- println(bodyElements.map(i => s"${i._1} -> ${i._2}"))
+    _ <- println(bodyElements.asJson.toString)
     _ <- println("")
     _ <- println("Closing http client")
     _ <- httpClient.shutdown
