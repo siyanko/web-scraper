@@ -6,6 +6,8 @@ import org.http4s.dsl.io._
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 
+import console._
+
 import scala.collection.JavaConverters._
 
 object WebScraper {
@@ -36,35 +38,17 @@ object WebScraper {
       .flatMap(parseTable)
   }
 
-
-  // FP println to console
-  def println(line: String): IO[Unit] = IO {
-    scala.Predef.println(line)
-  }
-
-  def println(seq: Seq[String]): IO[Unit] = IO {
-    seq.foreach {
-      l =>
-        scala.Predef.println(l)
-        scala.Predef.println()
-    }
-  }
-
-  def println(m: Map[String, String]): IO[Unit] = IO {
-    m.foreach(scala.Predef.println)
-  }
-
   val program: IO[Unit] = for {
     httpClient <- Http1Client[IO]()
-    _ <- println("Fetching Fronius Galvo 2.0-1 page")
+    _ <- Console[IO].println("Fetching Fronius Galvo 2.0-1 page")
     page <- httpClient.expect[String]("http://www.fronius.com/en/photovoltaics/products/all-products/inverters/fronius-galvo/fronius-galvo-2-0-1")
-    _ <- println("GOT Fronius Galvo 2.0-1 page")
-    bodyElements <- IO(productBlock(page))
-    _ <- println(bodyElements.asJson.toString)
-    _ <- println("")
-    _ <- println("Closing http client")
+    _ <- Console[IO].println("GOT Fronius Galvo 2.0-1 page")
+    bodyElements = productBlock(page)
+    _ <- Console[IO].println(bodyElements.asJson.toString)
+    _ <- Console[IO].println("")
+    _ <- Console[IO].println("Closing http client")
     _ <- httpClient.shutdown
-    _ <- println("See you next time, Chao!")
+    _ <- Console[IO].println("See you next time, Chao!")
   } yield ()
 
   def main(args: Array[String]): Unit = program.unsafeRunSync()
