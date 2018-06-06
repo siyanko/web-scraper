@@ -14,7 +14,14 @@ object WebScraper {
     page <- httpClient.expect[String]("http://www.fronius.com/en/photovoltaics/products/all-products/inverters/fronius-galvo/fronius-galvo-2-0-1")
     _ <- Console[IO].println("GOT Fronius Galvo 2.0-1 page")
     bodyElements = InverterPage.froniusInverterPage.parse(page)
-    _ <- Console[IO].println(bodyElements.asJson.toString)
+    _ <- bodyElements match{
+      case Left(err) => for {
+          _ <- Console[IO].println("Could not parse inverter data, because of " + err.getMessage)
+          _ <- IO(err.printStackTrace)
+        } yield ()
+      case Right(v) => 
+        Console[IO].println(v.asJson.toString)
+    }
     _ <- Console[IO].println("")
     _ <- Console[IO].println("Closing http client")
     _ <- httpClient.shutdown

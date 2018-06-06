@@ -1,6 +1,8 @@
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 
+import scala.util._
+
 import scala.collection.JavaConverters._
 
 object htmlPageParser {
@@ -10,13 +12,12 @@ object htmlPageParser {
   final case class InverterRawParameter(key: String, value: String)
 
   trait InverterPage{
-    def parse(p: Page): List[InverterRawParameter]
+    def parse(p: Page): Either[Throwable, List[InverterRawParameter]]
   }
 
   object InverterPage {
     val froniusInverterPage = new InverterPage {
 
-      //unsafe
       private val parseTable:  Element => List[InverterRawParameter] = table => {
         table.select("tr").asScala.toList
           .flatMap(tr => tr.children().asScala.toList.map(_.text()).sliding(2).map{
@@ -24,8 +25,7 @@ object htmlPageParser {
           }.toList)
       }
 
-      //unsafe
-      override def parse(p: Page): List[InverterRawParameter] = {
+      override def parse(p: Page): Either[Throwable, List[InverterRawParameter]] = Try {
         val doc = Jsoup.parse(p)
         val body = doc.body()
         //    body.getElementById("bacc_45e3b058-7e9d-4f21-a042-edb11b9efdd0_372160b4-7b89-436b-80c5-d56ae52046d5_") // fronius galvo 1.5-1
@@ -33,7 +33,7 @@ object htmlPageParser {
           .getElementsByTag("table")
           .asScala.toList
           .flatMap(parseTable)
-      }
+      }.toEither
     }
   }
 
