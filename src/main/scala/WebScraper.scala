@@ -2,6 +2,7 @@
 import cats.effect._
 import cats.implicits._
 import console._
+import file._
 import htmlPageParser._
 import io.circe.generic.auto._
 import io.circe.syntax._
@@ -14,7 +15,6 @@ import scala.util.Either
 // NOT FOR PRODUCTION
 import scala.concurrent.ExecutionContext.Implicits.global
 
-// TODO: save data to file
 // TODO: collect product urls
 object WebScraper {
 
@@ -55,8 +55,11 @@ object WebScraper {
           IO(Some(data))
       }
     }
-    _ <- Console[IO].println("Here they are....")
-    _ <- Console[IO].println(data.asJson.toString)
+    _ <- Console[IO].println(s"Got ${data.size} items")
+
+    _ <- Console[IO].println("Saving data to file")
+    _ <- FileStorage[IO].save("test.json", data.asJson.toString) 
+    _ <- Console[IO].println("Data has been saved to file")       
 
     _ <- Console[IO].println("Closing http client")
     _ <- httpClient.shutdown
