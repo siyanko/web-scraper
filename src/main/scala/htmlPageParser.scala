@@ -12,7 +12,7 @@ object htmlPageParser {
   final case class InverterRawParameter(key: String, value: String)
 
   trait InverterPage {
-    def parse(id: String)(p: Page): Either[Throwable, List[InverterRawParameter]]
+    def parse(p: Page): Either[Throwable, List[InverterRawParameter]]
   }
 
   object InverterPage {
@@ -25,14 +25,14 @@ object htmlPageParser {
           }.toList)
       }
 
-      // TODO: improve parsing logic
-      override def parse(id: String)(p: Page): Either[Throwable, List[InverterRawParameter]] = Try {
+      override def parse(p: Page): Either[Throwable, List[InverterRawParameter]] = Try {
         Jsoup.parse(p).body()
-          .getElementById(id)
+          .getElementById("372160b4-7b89-436b-80c5-d56ae52046d5")
           .getElementsByTag("table")
           .asScala.toList
           .flatMap(parseTable)
       }.toEither
+      
     }
   }
 
