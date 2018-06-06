@@ -11,25 +11,24 @@ object htmlPageParser {
 
   final case class InverterRawParameter(key: String, value: String)
 
-  trait InverterPage{
-    def parse(p: Page): Either[Throwable, List[InverterRawParameter]]
+  trait InverterPage {
+    def parse(id: String)(p: Page): Either[Throwable, List[InverterRawParameter]]
   }
 
   object InverterPage {
     val froniusInverterPage = new InverterPage {
 
-      private val parseTable:  Element => List[InverterRawParameter] = table => {
+      private val parseTable: Element => List[InverterRawParameter] = table => {
         table.select("tr").asScala.toList
-          .flatMap(tr => tr.children().asScala.toList.map(_.text()).sliding(2).map{
+          .flatMap(tr => tr.children().asScala.toList.map(_.text()).sliding(2).map {
             case List(a, b) => InverterRawParameter(a, b)
           }.toList)
       }
 
-      override def parse(p: Page): Either[Throwable, List[InverterRawParameter]] = Try {
-        val doc = Jsoup.parse(p)
-        val body = doc.body()
-        //    body.getElementById("bacc_45e3b058-7e9d-4f21-a042-edb11b9efdd0_372160b4-7b89-436b-80c5-d56ae52046d5_") // fronius galvo 1.5-1
-        body.getElementById("bacc_04cb292b-0b0e-41ff-a44a-b3b4cc786cd9_372160b4-7b89-436b-80c5-d56ae52046d5_") // fronius galvo 2.0-1
+      // TODO: improve parsing logic
+      override def parse(id: String)(p: Page): Either[Throwable, List[InverterRawParameter]] = Try {
+        Jsoup.parse(p).body()
+          .getElementById(id)
           .getElementsByTag("table")
           .asScala.toList
           .flatMap(parseTable)
