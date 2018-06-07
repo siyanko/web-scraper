@@ -23,21 +23,39 @@ object htmlPageParser {
 
     implicit val froniusHtmlPageParser: HtmlPageParser[Page, List[InverterRawParameter]] = new HtmlPageParser[Page, List[InverterRawParameter]] {
 
-      private val parseTable: Element => List[InverterRawParameter] = table => {
-        table.select("tr").asScala.toList
-          .flatMap(tr => tr.children().asScala.toList.map(_.text()).sliding(2).map {
-            case List(a, b) => InverterRawParameter(a, b)
-          }.toList)
-      }
+      private val parseTable: Element => List[InverterRawParameter] = _.select("tr").asScala.toList
+        .flatMap(tr => tr.children().asScala.toList.map(_.text()).sliding(2).map {
+          case List(a, b) => InverterRawParameter(a, b)
+        }.toList)
+
 
       override def parse(p: Page): ParsedPage[List[InverterRawParameter]] = Try {
-        Jsoup.parse(p).body()
+        Jsoup.parse(p)
+          .body()
           .getElementById("372160b4-7b89-436b-80c5-d56ae52046d5")
           .getElementsByTag("table")
           .asScala.toList
           .flatMap(parseTable)
       }.toEither
-    
+
+    }
+
+    implicit val froniusInvertersListParser: HtmlPageParser[Page, List[InverterRequestPage]] = new HtmlPageParser[Page, List[InverterRequestPage]] {
+
+      private val parseArticle: Element => List[InverterRequestPage] = article => for {
+        tag <- article.getElementsByClass("tags").asScala.toList
+        a <- tag.getElementsByTag("a").asScala.toList
+      } yield InverterRequestPage(a.attr("href"), a.text())
+
+
+      override def parse(p: Page): ParsedPage[List[InverterRequestPage]] = Try {
+        Jsoup.parse(p)
+          .body()
+          .getElementById("3495-inverters")
+          .getElementsByTag("article")
+          .asScala.toList
+          .flatMap(parseArticle)
+      }.toEither
     }
   }
 
