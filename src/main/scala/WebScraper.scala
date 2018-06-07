@@ -6,10 +6,9 @@ import file._
 import htmlPageParser._
 import io.circe.generic.auto._
 import io.circe.syntax._
-import org.http4s.Uri
 import org.http4s.client.Client
 import org.http4s.client.blaze._
-import org.http4s.dsl.io._
+import web._
 
 import scala.util.Either
 
@@ -18,77 +17,71 @@ import scala.concurrent.ExecutionContext.Implicits.global
 
 object WebScraper {
 
-  val froniusInverterList: Client[IO] => IO[List[InverterRequestPage]] = httpClient => for {
-    htmlPage <- httpClient.expect[String]("http://www.fronius.com/en/photovoltaics/products")
-    _ <- Console[IO].println("Got page.")
-    _ <- Console[IO].println("Parsing the page.")
-    pages <- HtmlPageParser.parse[String, List[InverterRequestPage]](htmlPage) match {
-      case Left(err) => for {
-        _ <- Console[IO].println("Could not parse inverters page: " + err.getMessage)
-        _ <- IO(err.printStackTrace())
-      } yield List.empty[InverterRequestPage]
-
-      case Right(pages) => IO(pages)
-    }
-  } yield pages
-
-  val froniusInvertersDetailedPages: Client[IO] => List[InverterRequestPage] => IO[List[(InverterRequestPage, String)]] =
+  def froniusInvertersDetailedPages[F[_] : Effect : HtmlPageCall]: Client[F] => List[InverterRequestPage] => F[List[Option[(InverterRequestPage, String)]]] =
     httpClient => pages =>
-    fs2.async.parallelTraverse[List, IO, InverterRequestPage, (InverterRequestPage, String)](pages) {
-      p =>
-        val target = Uri.uri("http://www.fronius.com") / p.url
-        for {
-          _ <- Console[IO].println("Getting " + p.model)
-          htmlPage <- httpClient.expect[String](target)
-          _ <- Console[IO].println("Got " + p.model)
-        } yield (p, htmlPage)
-    }
+      fs2.async.parallelTraverse[List, F, InverterRequestPage, Option[(InverterRequestPage, String)]](pages)(HtmlPageCall[F].fetchInverterDetailsPage(httpClient))
 
-  val inverterData: List[(InverterRequestPage, ParsedPage[List[InverterRawParameter]])] => IO[List[Option[InverterData]]] = rawData =>
-    fs2.async.parallelTraverse[List, IO, (InverterRequestPage, Either[Throwable, List[InverterRawParameter]]), Option[InverterData]](rawData) { tuple =>
-      tuple._2 match {
-        case Left(err) => for {
-          _ <- Console[IO].println("Could not parse inverter data, because of " + err.getMessage)
-          _ <- IO(err.printStackTrace)
-        } yield None
-        case Right(v) =>
-          val data = InverterData("Fronius", tuple._1.model, v)
-          IO(Some(data))
+  def inverterData[F[_] : Effect : Console](rawData: List[Option[(InverterRequestPage, ParsedPage[List[InverterRawParameter]])]]): F[List[Option[InverterData]]] =
+    fs2.async.parallelTraverse[List, F, Option[(InverterRequestPage, Either[Throwable, List[InverterRawParameter]])], Option[InverterData]](rawData) {
+      _ match {
+        case None => Effect[F].pure(None)
+        case Some((reqPage, maybeInverterRawParams)) => maybeInverterRawParams match {
+          case Left(err) => for {
+            _ <- Console[F].println("Could not parse inverter data, because of " + err.getMessage)
+            _ <- Effect[F].pure(err.printStackTrace)
+          } yield None
+          case Right(v) =>
+            val data = InverterData("Fronius", reqPage.model, v)
+            Effect[F].pure(Some(data))
+        }
       }
     }
 
+  def httpClient[F[_] : Effect]: F[Client[F]] = Http1Client[F]()
 
-  val program: IO[Unit] = for {
-    httpClient <- Http1Client[IO]()
+  def shutDownHttpClient[F[_]](cl: Client[F]): F[Unit] = cl.shutdown
+
+  def program[F[_] : Effect : Console : FileStorage : HtmlPageCall](rootUrl: String, productsUrl: String, filePath: String): F[Unit] = for {
+    httpClient <- httpClient[F]
 
     // fetching list of products
-    _ <- Console[IO].println("Fetching Fronius Inverter list pages")
-    pages <- froniusInverterList(httpClient)
-    _ <- Console[IO].println(s"Got ${pages.size} pages")
+    _ <- Console[F].println("Fetching Inverter list pages")
+    pgs <- HtmlPageCall[F].fetchInverterListPage(httpClient, productsUrl)
+    _ <- Console[F].println(s"Got ${pgs.size} pages")
+
+    // prepend root url to the pages
+    pages = pgs.map(p => p.copy(url = rootUrl + p.url))
 
     // fetching data from html pages
-    _ <- Console[IO].println("Fetching Fronius Inverter pages")
-    detailedPages <- froniusInvertersDetailedPages(httpClient)(pages)
-    _ <- Console[IO].println("Got all pages.")
+    _ <- Console[F].println("Fetching Inverter pages")
+    detailedPages <-
+      fs2.async.parallelTraverse[List, F, InverterRequestPage, Option[(InverterRequestPage, String)]](pages)(HtmlPageCall[F].fetchInverterDetailsPage(httpClient))
+    _ <- Console[F].println(s"Got ${detailedPages.size} pages.")
 
     // processing pages data
-    pagesRawData = detailedPages.map {
+    pagesRawData = detailedPages.map(_.map {
       case (requestPage, responsePage) => (requestPage, HtmlPageParser.parse[String, List[InverterRawParameter]](responsePage))
-    }
+    })
     data <- inverterData(pagesRawData)
-    _ <- Console[IO].println(s"Got ${data.size} items")
+    _ <- Console[F].println(s"Got ${data.size} items")
 
-    _ <- Console[IO].println("Saving data to file")
-    _ <- FileStorage[IO].save("fronius_inverters.json", data.asJson.toString)
-    _ <- Console[IO].println("Data has been saved to file")
+    // save data to file
+    _ <- Console[F].println("Saving data to file")
+    _ <- FileStorage[F].save(filePath, data.asJson.toString)
+    _ <- Console[F].println("Data has been saved to file")
 
-    _ <- Console[IO].println("Closing http client")
-    _ <- httpClient.shutdown
+    _ <- Console[F].println("Closing http client")
+    _ <- shutDownHttpClient[F](httpClient)
 
-    _ <- Console[IO].println("See you next time, Chao!")
+    _ <- Console[F].println("See you next time, Chao!")
   } yield ()
 
-  def main(args: Array[String]): Unit = program.unsafeRunSync()
+  def main(args: Array[String]): Unit =
+    program[IO](
+      "http://www.fronius.com",
+      "http://www.fronius.com/en/photovoltaics/products",
+      "fronius_inverters.json")
+      .unsafeRunSync()
 }
 
 final case class InverterRequestPage(url: String, model: String)
