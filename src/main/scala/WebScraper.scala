@@ -39,7 +39,7 @@ object WebScraper {
           _ <- Console[IO].println("Getting " + p.model)
           htmlPage <- httpClient.expect[String](target)
           _ <- Console[IO].println("Got " + p.model)
-        } yield ((p, InverterPage.froniusInverterPage.parse(htmlPage)))
+        } yield ((p, HtmlPageParser.froniusHtmlPageParser.parse(htmlPage)))
     }
 
     _ <- Console[IO].println("Got all pages.")
