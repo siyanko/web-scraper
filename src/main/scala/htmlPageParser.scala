@@ -18,7 +18,10 @@ object htmlPageParser {
   }
 
   object HtmlPageParser {
-    val froniusHtmlPageParser: HtmlPageParser[Page, List[InverterRawParameter]] = new HtmlPageParser[Page, List[InverterRawParameter]] {
+
+    def parse[A, B](page: A)(implicit P: HtmlPageParser[A, B]): ParsedPage[B] = P.parse(page)
+
+    implicit val froniusHtmlPageParser: HtmlPageParser[Page, List[InverterRawParameter]] = new HtmlPageParser[Page, List[InverterRawParameter]] {
 
       private val parseTable: Element => List[InverterRawParameter] = table => {
         table.select("tr").asScala.toList
@@ -34,7 +37,7 @@ object htmlPageParser {
           .asScala.toList
           .flatMap(parseTable)
       }.toEither
-      
+    
     }
   }
 
