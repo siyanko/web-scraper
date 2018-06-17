@@ -72,28 +72,16 @@ object ginlong_inverters {
     case Right(uri) => Some(uri)
   }
 
-  def httpFetch[F[_] : Effect, A](uri: Uri,
-                                  cookies: List[Cookie])
-                                 (f: Response[F] => A): Client[F] => F[A] = _.fetch[A](
-    Request[F](
-      uri = uri,
-      headers = Headers(
-        cookies.map(toHeaderCookie)
-      )))(r => Effect[F].point(f(r)))
+  def httpFetch[F[_], A](httpClient: Client[F], uri: Uri, cookies: List[Cookie], f: Response[F] => F[A]): F[A] = {
+    val headers = Headers(cookies.map(toHeaderCookie))
+    val req = Request[F](uri = uri, headers = headers)
 
-  def httpFetch2[F[_], A](httpClient: Client[F], uri: Uri, cookies: List[Cookie], f: Response[F] => F[A]): F[A] =
-    httpClient.fetch[A](
-      Request[F](
-        uri = uri,
-        headers = Headers(
-          cookies.map(toHeaderCookie)
-        )
-      )
-    )(f)
+    httpClient.fetch[A](req)(f)
+  }
 
   def getRequestCookies[F[_] : Effect : Console](httpClient: Client[F]): F[List[Cookie]] = for {
     _ <- Console[F].println("Fetching yunsuoSessionVerifyCookie")
-    yunsuoSessionVerifyCookie <- httpFetch2[F, List[Cookie]](
+    yunsuoSessionVerifyCookie <- httpFetch[F, List[Cookie]](
       httpClient,
       Uri.uri("http://www.ginlong.com/en/PV_Inverters.html?security_verify_data=313434302c393030"),
       Nil,
@@ -104,7 +92,7 @@ object ginlong_inverters {
       Cookie("srcurl", "687474703a2f2f7777772e67696e6c6f6e672e636f6d2f656e2f50565f496e766572746572732e68746d6c")
     )
     _ <- Console[F].println("Fetching securitySessionMidVerify")
-    securitySessionMidVerify <- httpFetch2[F, List[Cookie]](
+    securitySessionMidVerify <- httpFetch[F, List[Cookie]](
       httpClient,
       Uri.uri("http://www.ginlong.com/en/PV_Inverters.html?security_verify_data=313434302c393030"),
       cookies1,
@@ -118,7 +106,7 @@ object ginlong_inverters {
   def getPageLoop[F[_] : Effect : Console](httpClient: Client[F], uri: Uri, cookies: List[Cookie]): F[Either[Throwable, List[InverterRawParameter]]] = {
 
     def loop(uri: Uri): F[Either[Throwable, List[InverterRawParameter]]] = for {
-      maybePage <- httpFetch2[F, Either[Throwable, String]](
+      maybePage <- httpFetch[F, Either[Throwable, String]](
         httpClient, uri, cookies, _.bodyAsText.compile.foldMonoid.attempt
       )
 
